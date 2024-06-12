@@ -1,0 +1,29 @@
+[project]
+name='point-in-time'
+description='Lightweight tooling for tracking experiment state in git based repositories.'
+version='0.1.0'
+authors=[
+    { name = 'Carter Fendley' }
+]
+
+# Restrictions causing minimum version
+# Python 3.7:
+# - subprocess.run's capture_output
+requires-python = ">= 3.7"
+dependencies = [
+    'click'
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest"
+]
+
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = [
+    'point_in_time'
+]
