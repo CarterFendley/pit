@@ -1,7 +1,7 @@
 [project]
 name='point-in-time'
 description='Lightweight tooling for tracking experiment state in git based repositories.'
-version='0.1.0'
+version='0.0.0'
 authors=[
     { name = 'Carter Fendley' }
 ]
