@@ -11,13 +11,18 @@ authors=[
 # - subprocess.run's capture_output
 requires-python = ">= 3.7"
 dependencies = [
-    'click'
+    "click",
+    "pydantic"
 ]
 
 [project.optional-dependencies]
 dev = [
-    "pytest"
+    "pytest",
+    "pytest-cov"
 ]
+
+[project.scripts]
+pit = "point_in_time.cli:pit"
 
 [build-system]
 requires = ["setuptools>=61.0"]

@@ -23,8 +23,11 @@ python -m pip install '.[dev]'
 ```
 
 Verify correct install by running tests.
+
+**NOTE:** You can view the html coverage report by opening `<path-to-repo>/htmlcov/index.html` in the browser.
+
 ```bash
-python -m pytest tests
+python -m pytest
 ```
 
 ### Releasing
