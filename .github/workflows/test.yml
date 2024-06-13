@@ -37,4 +37,4 @@ jobs:
       # -I option is for running python in 'isolated' mode so it does not add the current directory to the path and get confusing import results 
       # --cov=<complex_stuff> is a hack to pickup the site packages directory.
       run: |
-      python -I -m pytest --cov="$(python -c 'import site; print(site.getsitepackages()[0])')/point_in_time"
+        python -I -m pytest --cov="$(python -c 'import site; print(site.getsitepackages()[0])')/point_in_time"
