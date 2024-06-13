@@ -1,3 +1,7 @@
+[build-system]
+requires = ["pdm-backend"]
+build-backend = "pdm.backend"
+
 [project]
 name='point-in-time'
 description='Lightweight tooling for tracking experiment state in git based repositories.'
@@ -24,11 +28,11 @@ dev = [
 [project.scripts]
 pit = "point_in_time.cli:pit"
 
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools]
-packages = [
-    'point_in_time'
+[tool.pdm.build]
+includes = ["point_in_time"]
+source-includes = [
+    "README.md",
+    "pyproject.toml",
+    "tests",
+    "tox.ini"
 ]

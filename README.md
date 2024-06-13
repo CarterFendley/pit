@@ -27,7 +27,7 @@ Verify correct install by running tests.
 **NOTE:** You can view the html coverage report by opening `<path-to-repo>/htmlcov/index.html` in the browser.
 
 ```bash
-python -m pytest
+python -m pytest --cov=point_in_time
 ```
 
 ### Releasing
