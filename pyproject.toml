@@ -21,6 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "tox",
     "pytest",
     "pytest-cov"
 ]
