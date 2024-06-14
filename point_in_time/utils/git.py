@@ -90,7 +90,6 @@ def git_parse_pathspec_from_file(path: str, force: bool = False) -> List[str]:
             '--ignore-missing', # In case paths don't exist
             f'--pathspec-from-file={path}'
         ]
-
         if force:
             args.append('--force')
 
@@ -102,7 +101,17 @@ def git_parse_pathspec_from_file(path: str, force: bool = False) -> List[str]:
             capture_output=True
         )
 
-        paths = []
+        # Little hacky at the moment, want to capture staged files too, so need to do it with `--renormalize` but renormalize will cause issues with repos without commits in them.
+        args.append('--renormalize')
+        result.stdout += subprocess.run(
+            args,
+            # Check is intentionally false
+            # When ignored files are added without --force, return will be 1
+            check=False,
+            capture_output=True
+        ).stdout
+
+        paths = set()
         stdout_lines = result.stdout.decode().split('\n')
         for line in stdout_lines:
             if line == '':
@@ -111,6 +120,6 @@ def git_parse_pathspec_from_file(path: str, force: bool = False) -> List[str]:
             assert line.endswith("'"), "Found unexpected suffix when reading output from 'git add'"
 
             line = line[5:-1]
-            paths.append(line)
+            paths.add(line)
 
         return paths
