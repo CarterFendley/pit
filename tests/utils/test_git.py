@@ -1,10 +1,8 @@
-import subprocess
 from point_in_time.utils.git import (
     git_is_command,
     git_is_inside_working_tree,
     git_show_toplevel,
     git_check_ignore,
-    git_parse_pathspec_from_file
 )
 
 def test_is_command_true():
@@ -35,110 +33,3 @@ def test_ignore_true(with_git_repo):
     )
 
     assert git_check_ignore('my_file') == True
-
-def test_parse_pathspec(with_git_repo, tmp_path):
-    d = with_git_repo(
-        files=[
-            'file.txt',
-            'dir/file_one.txt',
-            'dir/file_two.txt',
-            'ignored_dir/file_one.txt',
-            'ignored_dir/file_two.txt',
-            'ignored_file',
-            # This is added automatically when adding the `ignore` option but listing here to prevent confusion.
-            '.gitignore'
-        ],
-        ignore=[
-            'ignored_dir',
-            'ignored_file'
-        ]
-    )
-
-    pathspec_file = tmp_path / 'pathspec.txt'
-
-    def run_asserts():
-        # Test . file
-        with open(pathspec_file, 'w') as f:
-            f.write('.')
-        files = git_parse_pathspec_from_file(pathspec_file.absolute())
-        assert sorted(files) == sorted([
-            'file.txt',
-            'dir/file_one.txt',
-            'dir/file_two.txt',
-            '.gitignore'
-        ])
-
-        # Test exclude pattern
-        with open(pathspec_file, 'w') as f:
-            f.write(':(exclude)dir/file_one.txt')
-        files = git_parse_pathspec_from_file(pathspec_file.absolute())
-        assert sorted(files) == sorted([
-            'file.txt',
-            'dir/file_two.txt',
-            '.gitignore'
-        ])
-
-        # Test with dir targeting
-        with open(pathspec_file, 'w') as f:
-            f.write('dir/')
-        files = git_parse_pathspec_from_file(pathspec_file.absolute())
-        assert sorted(files) == sorted([
-            'dir/file_one.txt',
-            'dir/file_two.txt',
-        ])
-
-        # Test no failures: file does not exist
-        with open(pathspec_file, 'w') as f:
-            f.write('my_non_existing_file')
-        files = git_parse_pathspec_from_file(pathspec_file.absolute())
-        assert files == set()
-
-        # Test no failures: Ignored file
-        with open(pathspec_file, 'w') as f:
-            f.write('ignored_file')
-        files = git_parse_pathspec_from_file(pathspec_file.absolute())
-        assert files == set()
-
-        # Test no failures: Comments
-        with open(pathspec_file, 'w') as f:
-            f.write('# Comment in path spec')
-        files = git_parse_pathspec_from_file(pathspec_file.absolute())
-        assert files == set()
-
-        # Test with force
-        with open(pathspec_file, 'w') as f:
-            f.write('ignored_file')
-        files = git_parse_pathspec_from_file(pathspec_file.absolute(), force=True)
-        assert files == {'ignored_file'}
-
-        # Test with file already added
-        subprocess.run(
-            ['git', 'add', 'file.txt'],
-            check=True
-        )
-        with open(pathspec_file, 'w') as f:
-            f.write('file.txt')
-        files = git_parse_pathspec_from_file(pathspec_file.absolute())
-        assert sorted(files) == sorted([
-            'file.txt'
-        ])
-
-
-    # Run once without any commits
-    run_asserts()
-
-    # Commit everything and run more tests
-    subprocess.run(
-        ['git', 'add', '-A'],
-        check=True
-    )
-    subprocess.run(
-        ['git', 'commit', '-m', 'Initial commit'],
-        check=True
-    )
-    run_asserts()
-
-    # Make some edits to files, check again
-    with open('file.txt', 'w') as f:
-        f.write('Update')
-    run_asserts()

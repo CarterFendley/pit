@@ -1,7 +1,6 @@
 import os
 import sys
 import logging
-import subprocess
 
 import click
 
@@ -11,14 +10,22 @@ from point_in_time.errors import (
     PITRepoExistsError,
     PITInternalError
 )
-from point_in_time.utils.main import get_pit_path, is_pit_path_ignored
-from point_in_time.utils.git import git_show_toplevel
+from point_in_time.utils.main import (
+    get_pit_path,
+    is_pit_path_ignored,
+    status_filter_pathspec
+)
+from point_in_time.utils.git import (
+    git_show_toplevel
+)
 from point_in_time.utils.logging import pit_get_logger, set_cli_level
-from point_in_time.utils.cli import *
+from point_in_time.cli.util import *
+
+from .extension import MultiCommandGroup
 
 logger = pit_get_logger(__name__, cli=True)
 
-@click.group()
+@click.group(cls=MultiCommandGroup)
 @click.option('-v', '--verbose', is_flag=True, help='Enable verbose logging.')
 def pit(verbose: bool):
     """
@@ -27,7 +34,7 @@ def pit(verbose: bool):
     if verbose:
         set_cli_level(logging.DEBUG)
 
-@pit.command()
+@pit.command('init')
 @click.argument('directory', required=False, default=None)
 @click.option('--no-ignore', is_flag=True, help="Disables inclusion of '.pit' directory in git ignore")
 def init(directory: str, no_ignore: bool):
@@ -67,3 +74,15 @@ def init(directory: str, no_ignore: bool):
     result_checks = cli_check_standard()
     if result_checks != 0:
         sys.exit(result_checks)
+
+@pit.command(['snapshot', 'snap'])
+@click.option('--no-untracked', is_flag=True, help="Disables inclusion of '.pit' directory in git ignore")
+def snapshot(no_untracked: bool):
+    # Run standard checks
+    result_checks = cli_check_standard()
+    if result_checks != 0:
+        sys.exit(result_checks)
+
+    repo = cli_load_pit_repo()
+    paths = status_filter_pathspec(repo._include_path)
+    repo.snapshot()

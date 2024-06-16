@@ -16,7 +16,8 @@ authors=[
 requires-python = ">= 3.7"
 dependencies = [
     "click",
-    "pydantic"
+    "pydantic",
+    "pathspec"
 ]
 
 [project.optional-dependencies]
@@ -27,7 +28,7 @@ dev = [
 ]
 
 [project.scripts]
-pit = "point_in_time.cli:pit"
+pit = "point_in_time.cli.main:pit"
 
 [tool.pdm.build]
 includes = ["point_in_time"]

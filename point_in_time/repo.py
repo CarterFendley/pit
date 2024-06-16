@@ -3,13 +3,14 @@ import os
 import json
 from json import JSONDecodeError
 from datetime import datetime
-from typing import List
+from typing import Dict
 
 from pydantic import BaseModel, TypeAdapter
 from pydantic_core import ValidationError
 
 from point_in_time.constants.main import (
-    PIT_LOG_NAME
+    PIT_LOG_NAME,
+    PIT_INCLUDE_NAME
 )
 from point_in_time.errors import (
     PITInternalError,
@@ -42,13 +43,23 @@ class PITRepo:
             raise PITRepoExistsError()
         os.mkdir(path)
 
-        log_data = []
+        # Initialize files
+        log_data = {}
         log_path = os.path.join(
             path,
             PIT_LOG_NAME
         )
         with open(log_path, 'w') as f:
             json.dump(log_data, f)
+
+        include_path = os.path.join(
+            path,
+            PIT_INCLUDE_NAME
+        )
+        with open(include_path, 'w') as f:
+            f.write('# Pit include files are treated written in the git pathspec syntax\n')
+            f.write('# See more here: https://git-scm.com/docs/gitglossary#Documentation/gitglossary.txt-aiddefpathspecapathspec\n')
+            f.write('*\n')
 
         return cls(path)
 
@@ -57,6 +68,10 @@ class PITRepo:
         self._log_path = os.path.join(
             self._path,
             PIT_LOG_NAME
+        )
+        self._include_path = os.path.join(
+            self._path,
+            PIT_INCLUDE_NAME
         )
 
         self._load_log()
@@ -72,14 +87,17 @@ class PITRepo:
             raise PITLogLoadError("Malformed pit log: %s" % err.msg)
 
         try:
-            ta = TypeAdapter(List[PITLogEntry])
+            ta = TypeAdapter(Dict[str, PITLogEntry])
             self.log = ta.validate_python(log_data)
         except ValidationError as err:
             raise PITLogLoadError("Malformed pit log: %s" % str(err))
 
+    def snapshot(self):
+        pass
+
 
 
 class PITLogEntry(BaseModel):
-    name: str
+    id: str
     git_hash: str
     created_at: datetime

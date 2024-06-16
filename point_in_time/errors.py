@@ -12,6 +12,10 @@ class PITRepoExistsError(PITBaseException):
     def __init__(self):
         super().__init__("Pit does not currently support reinitialization: Path already contains a '.pit' directory")
 
-class PITLogLoadError(PITBaseException):
+class PITRepoLoadError(PITBaseException):
+    """Base class for repo load errors"""
+    pass
+
+class PITLogLoadError(PITRepoLoadError):
     """When loading log file fails"""
     pass
