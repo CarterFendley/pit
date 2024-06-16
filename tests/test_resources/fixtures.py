@@ -35,6 +35,16 @@ def with_git_repo(with_empty_dir) -> Callable[[], GitData]:
             check=True
         )
 
+        # Configure user email / name for any commit actions
+        subprocess.run(
+            ['git', 'config', 'user.email', '"fixture@pytest.com"'],
+            check=True
+        )
+        subprocess.run(
+            ['git', 'config', 'user.name', '"Pytest Fixture"'],
+            check=True
+        )
+
 
         if files is not None:
             for file in files:
