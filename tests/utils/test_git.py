@@ -5,6 +5,8 @@ from point_in_time.utils.git import (
     git_check_ignore,
 )
 
+from test_resources.fixtures import GitSpec
+
 def test_is_command_true():
     # Assumption: tests are run where git is command
     assert git_is_command() == True
@@ -29,7 +31,7 @@ def test_ignore_false(with_git_repo):
 
 def test_ignore_true(with_git_repo):
     with_git_repo(
-        spec={'!!': {'my_file'}}
+        GitSpec({'!!': {'my_file'}})
     )
 
     assert git_check_ignore('my_file') == True

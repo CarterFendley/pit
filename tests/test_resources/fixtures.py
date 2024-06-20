@@ -1,8 +1,9 @@
 import os
 import subprocess
-from typing import Callable, List, Dict, Set
+from typing import Callable, Optional, List, Dict, Set
 from pathlib import Path
 from dataclasses import dataclass
+from functools import reduce
 
 import pytest
 
@@ -18,19 +19,124 @@ def with_empty_dir(tmp_path_factory):
     # Restore old directory path
     os.chdir(original_dir)
 
+
+GIT_CODE_COMMITTED = '99'
+"""Non-standard status code to assure allow for associated fixtures to commit files."""
+@dataclass
+class GitSpec:
+    """
+    A dataclass accepted by associated fixtures which informs the fixtures how to initialize the git repo and contains helper properties for tests utilizing those fixtures.
+    """
+
+    spec_dict: Dict[str, Set[str]]
+    """
+    The spec which the fixture was invoked with.
+    """
+
+    @staticmethod
+    def as_git_status_would(
+        paths: Set[str]
+    ) -> Set[str]:
+        """
+        **IMPORTANT NOTE:** This method is very much a *WIP*, only built atm to work with specs known to be defined by tests in this repo.
+
+        Utility to take a set of file paths and return a set of paths as would be returned by `git status`. Specifically, return the top level file name (dir or file) where directories with multiple files are only shown by the directory name itself.
+
+        Args:
+            paths (Set[str]): The file paths to transform.
+        Returns:
+            Set[str]: The paths that `git status` would return given input files.
+        """
+        def top_level_only(path):
+            s = os.path.split(path)
+            if s[0] != '':
+                return s[0] + '/'
+            return s[1]
+        return set(map(
+            top_level_only,
+            paths
+        ))
+
+    def spec_fattened(
+        self,
+        exclude_codes: Optional[List[str]] = None,
+        exclude_paths: Optional[List[str]] = None
+    ) -> Set[str]:
+        """
+        A flattened list of files inside of the spec.
+
+        **NOTE:** This will not always contain the paths returned by `git status` and associated commands. The `git status` command will often truncate the file paths to the top level directory or similar. Use `expected_initial_status` instead for that use case.
+
+        Returns:
+            Set[str]: The list of file paths in `self.spec`
+        """
+        if exclude_codes is None:
+            exclude_codes = []
+        if exclude_paths is None:
+            exclude_paths = []
+
+        spec = self.spec_dict.copy()
+
+        for code in exclude_codes:
+            del spec[code]
+
+        flattened = reduce(
+            lambda a, b: a.union(b),
+            spec.values(),
+            set()
+        )
+
+        flattened = filter(
+            lambda p: p not in exclude_paths,
+            flattened
+        )
+
+        return set(flattened)
+
+    def expected_initial_status(
+        self,
+        include_ignores: bool = True
+    ) -> Dict[str, Set[str]]:
+        """
+        The expected return of `git status --short` (as parsed by utilities).
+
+        Args:
+            include_ignores (bool, optional): If the ignored files should be included
+
+        Returns:
+            Dict[str, Set[str]]: The `spec` which should be expected at the start.
+        """
+        expected = self.spec_dict.copy()
+
+        # Committed code is non-standard, will never show up in the status.
+        del expected[GIT_CODE_COMMITTED]
+
+        # If ignores excluded, exclude
+        if not include_ignores:
+            del expected['!!']
+
+        # Transform all paths to be listed as returned by `git status`
+        for code, files in expected.items():
+            expected[code] = self.as_git_status_would(files)
+
+        return expected
+
 @dataclass
 class GitData:
-    spec: Dict[str, Set[str]]
+    """
+    A dataclass returned by the `with_git_repo` fixture containing information about the associated git repository setup by that fixture.
+    """
+    spec: GitSpec
     path: str
     ignore_path: str
 
 @pytest.fixture
 def with_git_repo(with_empty_dir) -> Callable[[], GitData]:
     def inner(
-        spec: Dict[str, Set[str]] = None,
+        spec: GitSpec = None,
     ) -> GitData:
         if spec is None:
-            spec = {}
+            spec = GitSpec({})
 
         subprocess.run(
             ['git', 'init'],
@@ -48,7 +154,7 @@ def with_git_repo(with_empty_dir) -> Callable[[], GitData]:
         )
 
         # Create all files specified
-        for _, files in spec.items():
+        for _, files in spec.spec_dict.items():
             for file in files:
                 parent = os.path.dirname(file)
                 if parent != '':
@@ -60,9 +166,9 @@ def with_git_repo(with_empty_dir) -> Callable[[], GitData]:
 
         # Files which should be committed, commit
         # Note: `99` is not valid git status code, just making up one here for use with the fixture
-        if '99' in spec:
+        if '99' in spec.spec_dict:
             subprocess.run(
-                ['git', 'add'] + list(spec['99']),
+                ['git', 'add'] + list(spec.spec_dict['99']),
                 check=True
             )
             subprocess.run(
@@ -71,15 +177,15 @@ def with_git_repo(with_empty_dir) -> Callable[[], GitData]:
             )
 
         # Files which should be staged, stage
-        if 'A ' in spec:
+        if 'A ' in spec.spec_dict:
             subprocess.run(
-                ['git', 'add'] + list(spec['A ']),
+                ['git', 'add'] + list(spec.spec_dict['A ']),
                 check=True
             )
 
-        if '!!' in spec:
+        if '!!' in spec.spec_dict:
             with open('.gitignore', 'w') as f:
-                for file in spec['!!']:
+                for file in spec.spec_dict['!!']:
                     f.write(f'{file}\n')
 
         return GitData(

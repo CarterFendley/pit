@@ -8,77 +8,13 @@ import pytest
 
 from point_in_time.utils.main import status_filter_pathspec
 
-# Only top level directories will show
-def as_git_status_would(paths: Set[str]) -> Set[str]:
-    """
-    Utility to take a set of file paths and return a set of paths as would be returned by `git status`. Specifically, return the top level file name (dir or file) where directories with multiple files are only shown by the directory name itself.
+from test_resources.fixtures import GitSpec, GIT_CODE_COMMITTED
+from test_resources.git_specs import GIT_SPEC_ONE
 
-    Args:
-        paths (Set[str]): _description_
-    Returns:
-        Set[str]: The paths that `git status` would return given input files.
-    """
-    def top_level_only(path):
-        s = os.path.split(path)
-        if s[0] != '':
-            return s[0] + '/'
-        return s[1]
-    return set(map(
-        top_level_only,
-        paths
-    ))
-
-FIXTURE_FILES = {
-    # Committed files
-    # Note: `99` is not valid git status code, just making up one here for use with the fixture
-    '99': {
-        'file_committed.txt',
-    },
-    # Untracked files
-    '??': {
-        'file_untracked.txt',
-        'dir/file_one.txt',
-        'dir/file_two.txt',
-        # Add name edge cases
-        'white   space.txt',
-        '"quotes.txt"',
-        '\\\\"backslash_quotes.txt\\\\"',
-        # This is added automatically when adding the `ignore` option but listing here for use in tests
-        '.gitignore'
-    },
-    # Newly added files
-    'A ': {
-        'file_staged.txt',
-    },
-    # Ignored files
-    '!!': {
-        'file_ignored.txt',
-        'ignored_dir/file_one.txt',
-        'ignored_dir/file_two.txt',
-    }
-}
-FIXTURE_FILES_FLAT = reduce(
-    lambda a, b: a.union(b),
-    FIXTURE_FILES.values(),
-    set()
+FIXTURE_FILES_FOR_ITERATION = GIT_SPEC_ONE.spec_fattened(
+    exclude_codes=['!!', GIT_CODE_COMMITTED],
+    exclude_paths=['.gitignore'] # Delete / move operations wil return unexpected results if they modify .gitignore
 )
-
-# A set of files for parameterized tests
-FIXTURE_FILES_FOR_ITERATION = FIXTURE_FILES_FLAT - (
-    FIXTURE_FILES['!!'] # Ignored
-    .union(FIXTURE_FILES['99']) # Committed
-    .union({'.gitignore'}) # Delete / move operations wil return unexpected results if they modify .gitignore
-)
-
-# Anything that will show up by default in git status
-EXPECT_CHANGED_UNTRACKED = FIXTURE_FILES.copy()
-del EXPECT_CHANGED_UNTRACKED['99']
-for code, files in EXPECT_CHANGED_UNTRACKED.items():
-    EXPECT_CHANGED_UNTRACKED[code] = as_git_status_would(
-        EXPECT_CHANGED_UNTRACKED[code]
-    )
-
-
 
 @pytest.fixture
 def pathspec_fixture(with_git_repo, tmp_path) -> Path:
@@ -86,7 +22,7 @@ def pathspec_fixture(with_git_repo, tmp_path) -> Path:
         pathspec_file = tmp_path / 'pathspec.txt'
 
         with_git_repo(
-            spec=FIXTURE_FILES
+            spec=GIT_SPEC_ONE
         )
 
         return pathspec_file
@@ -114,7 +50,7 @@ def test_pattern_star(pathspec_fixture):
         f.write('*')
 
     files = status_filter_pathspec(pathspec_file)
-    assert files == EXPECT_CHANGED_UNTRACKED
+    assert files == GIT_SPEC_ONE.expected_initial_status()
 
 @pytest.mark.xfail
 def test_pattern_dot(pathspec_fixture):
@@ -123,7 +59,7 @@ def test_pattern_dot(pathspec_fixture):
         f.write('.')
 
     files = status_filter_pathspec(pathspec_file)
-    assert files == EXPECT_CHANGED_UNTRACKED
+    assert files == GIT_SPEC_ONE.expected_initial_status()
 
 @pytest.mark.xfail
 def test_pattern_exclude(pathspec_fixture):
@@ -155,7 +91,7 @@ def test_with_comments(pathspec_fixture):
         f.write('# Another comment')
 
     files = status_filter_pathspec(pathspec_file)
-    assert files == EXPECT_CHANGED_UNTRACKED
+    assert files == GIT_SPEC_ONE.expected_initial_status()
 
 @pytest.mark.xfail
 @pytest.mark.parametrize("file", ['   leading.txt', 'trailing.txt   '])
@@ -190,7 +126,7 @@ def test_with_move(pathspec_fixture_all_committed, file: str):
 
     # NOTE: Expect based from ignore b/c ignores will not be committed
     expect = {
-        '!!': as_git_status_would(FIXTURE_FILES['!!']),
+        '!!': GitSpec.as_git_status_would(GIT_SPEC_ONE.spec_dict['!!']),
         'R ': {
             (file, f'{file}_new')
         }
@@ -214,7 +150,7 @@ def test_with_rm(pathspec_fixture_all_committed, file: str):
 
     # NOTE: Expect based from ignore b/c ignores will not be committed
     expect = {
-        '!!': as_git_status_would(FIXTURE_FILES['!!']),
+        '!!': GitSpec.as_git_status_would(GIT_SPEC_ONE.spec_dict['!!']),
         'D ': {file}
     }
     assert files == expect
