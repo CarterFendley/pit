@@ -1,6 +1,6 @@
 import os
 import subprocess
-from typing import Optional, List
+from typing import Optional, Union, Dict, List, Tuple, Set
 from contextlib import ExitStack
 
 from pathspec import PathSpec
@@ -10,6 +10,14 @@ from point_in_time.constants.main import PIT_DIR_NAME
 
 from .os import ChDir
 from .git import git_show_toplevel, git_check_ignore
+
+GIT_STATUS_CODES_W_TUPLE = (
+    ' R',
+    'R '
+)
+"""
+Git short form status 'codes' which indicate that there will be two paths separated by '->'. This can be used with `status_filter_pathspec` to know which keys will have a list of tuple with two items (`Set[Tuple[str]]`) instead of a simple list of of strings (`Set[str]`).
+"""
 
 def get_pit_path(git_path: Optional[str] = None) -> str:
     """
@@ -57,7 +65,31 @@ def find_unescaped_qoute(string: str, start: int) -> int:
                 return i
     return -1
 
-def status_filter_pathspec(path: str, force: bool = False) -> List[str]:
+def status_filter_pathspec(
+    path: str,
+) -> Dict[str, Set[Union[str, Tuple[str]]]]:
+    """
+    This utility parses the output of `git status --short` and filters based on an specified file containing a git [pathspec](https://git-scm.com/docs/gitglossary#Documentation/gitglossary.txt-aiddefpathspecapathspec). See an example return below.
+
+    ```python
+    >>> status_filter_pathspec(...)
+    {
+        'M ': ['README.md'],
+        ' M': ['path/to/modified/file.py', 'file_two.py'],
+        'R ': [('original.py', 'renamed.py')]
+    }
+    ```
+
+    As shown above, this function will either return a dictionary with a list of tuple with two items (`Set[Tuple[str]]`) OR a simple list of of strings (`Set[str]`). The git status codes (which are the dictionary keys) which return `Tuple[str]` are indicated by `GIT_STATUS_CODES_W_TUPLE`. Read more about the short form git status [here](https://git-scm.com/docs/git-status#_short_format).
+
+    **NOTE:** Pathspecs are parsed by [cpburnz/python-pathspec](https://github.com/cpburnz/python-pathspec).
+
+    Args:
+        path (str): The path to a valid pathspec file.
+
+    Returns:
+        Dict[str]: The git status filtered by the pathspec file (including ignored files).
+    """
     status = subprocess.run(
         args=['git', 'status', '--short', '--ignored'],
         check=True,
@@ -66,8 +98,7 @@ def status_filter_pathspec(path: str, force: bool = False) -> List[str]:
     status = status.stdout.decode().split('\n')
 
     # Parse status into two lists
-    changed = []
-    ignored = []
+    files_by_code: Dict[List] = {}
     for line in status:
         if line == '':
             continue
@@ -98,21 +129,38 @@ def status_filter_pathspec(path: str, force: bool = False) -> List[str]:
             else:
                 path_two = rest[3:]
 
-        if code == '!!':
-            l = ignored
-        else:
-            l = changed
+        if code not in files_by_code:
+            files_by_code[code] = []
 
-        l.append(path_one)
         if path_two is not None:
-            l.append(path_two)
-
-    if force:
-        files = changed + ignored
-    else:
-        files = changed
+            assert code in (' R', 'R '), "Assumption about '->' broken."
+            files_by_code[code].append((path_one, path_two))
+        else:
+            files_by_code[code].append(path_one)
 
     # Filter based on specified pathspec
     with open(path, 'r') as f:
         spec = PathSpec.from_lines(GitWildMatchPattern, f)
-    return list(spec.match_files(files))
+
+    for code in files_by_code.keys():
+        if code in GIT_STATUS_CODES_W_TUPLE:
+            # Note: There is a design decision here to include both paths if one side is matched.
+            matched = set()
+            for file_one, file_two in files_by_code[code]:
+                if spec.match_file(file_one) or spec.match_file(file_two):
+                    matched.add((file_one, file_two))
+
+            files_by_code[code] = matched
+        else:
+            files_by_code[code] = set(
+                spec.match_files(files_by_code[code])
+            )
+
+        # Normalize by removing codes which have an empty set
+        files_by_code = {
+            k:v
+            for k, v in files_by_code.items()
+            if v != set()
+        }
+
+    return files_by_code

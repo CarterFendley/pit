@@ -29,7 +29,7 @@ def test_ignore_false(with_git_repo):
 
 def test_ignore_true(with_git_repo):
     with_git_repo(
-        ignore=['my_file']
+        spec={'!!': {'my_file'}}
     )
 
     assert git_check_ignore('my_file') == True
