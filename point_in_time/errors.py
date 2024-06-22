@@ -23,3 +23,19 @@ class PITLogLoadError(PITRepoLoadError):
 class PITIncludeLoadError(PITBaseException):
     """When loading include file fails"""
     pass
+
+class PITStashFailedError(PITBaseException):
+    """When stash push fails"""
+    pass
+
+class PITStashPopFailedError(PITBaseException):
+    """When stash pop fails"""
+    pass
+
+class PITCommitParseFailed(PITBaseException):
+    """When pit fails to parse a commit from the stash drop"""
+    pass
+
+class PITLogCollision(PITBaseException):
+    """If there is name collision with entries in the pit log"""
+    pass

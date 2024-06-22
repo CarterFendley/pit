@@ -1,6 +1,10 @@
 import os
 import sys
+import socket
+import getpass
 import logging
+from functools import reduce
+from typing import List, Tuple, Union
 
 import click
 
@@ -8,7 +12,10 @@ from point_in_time.repo import PITRepo
 from point_in_time.constants.return_codes import *
 from point_in_time.errors import (
     PITRepoExistsError,
-    PITInternalError
+    PITInternalError,
+    PITStashFailedError,
+    PITStashPopFailedError,
+    PITCommitParseFailed
 )
 from point_in_time.utils.main import (
     get_pit_path,
@@ -22,6 +29,7 @@ from point_in_time.utils.logging import pit_get_logger, set_cli_level
 from point_in_time.cli.util import *
 
 from .extension import MultiCommandGroup
+
 
 logger = pit_get_logger(__name__, cli=True)
 
@@ -86,14 +94,114 @@ def status():
     status = repo.get_snapshot_paths_status(cli=True)
     print('\n'.join(status))
 
-@pit.command(['snapshot', 'snap'])
-@click.option('--no-untracked', is_flag=True, help="Disables inclusion of '.pit' directory in git ignore")
-def snapshot(no_untracked: bool):
+@pit.command('show')
+@click.argument('id')
+@click.option('--verbose', is_flag=True, help="Displays more details.")
+def show(id: str, verbose: bool):
     # Run standard checks
     result_checks = cli_check_standard()
     if result_checks != 0:
         sys.exit(result_checks)
 
     repo = cli_load_pit_repo()
-    paths = status_filter_pathspec(repo._include_path)
-    repo.snapshot()
+    log = repo._load_log()
+
+    if id not in log:
+        logger.error("Specified Pit id does not exist in log.")
+        sys.exit(PIT_CODE_ID_NOT_FOUND)
+
+    details = repo.get_details(log[id])
+
+    print(details.format(cli=True, verbose=verbose))
+
+@pit.command('log')
+@click.option('--limit', required=False, default=50, help="Set the limit of number of logs displayed")
+def log(limit: int):
+    # Run standard checks
+    result_checks = cli_check_standard()
+    if result_checks != 0:
+        sys.exit(result_checks)
+
+    repo = cli_load_pit_repo()
+    log = repo._load_log()
+
+    keys = list(log.keys())[:limit]
+    keys.reverse()
+    for id in keys:
+        details = repo.get_details(log[id])
+        print(details.format(cli=True, verbose=False))
+        print()
+
+
+
+@pit.command(['snapshot', 'snap'])
+@click.option('--no-untracked', is_flag=True, help="Disables inclusion of '.pit' directory in git ignore")
+@click.option('--no-metadata', is_flag=True, help="Disable recording of metadata such as user and hostname")
+@click.option('-y', '--yes', is_flag=True, help="Skip the acceptance prompt")
+def snapshot(
+    no_untracked: bool,
+    no_metadata: bool,
+    yes: bool
+):
+    # Run standard checks
+    result_checks = cli_check_standard()
+    if result_checks != 0:
+        sys.exit(result_checks)
+
+    repo = cli_load_pit_repo()
+    paths = repo.get_snapshot_paths()
+
+    if no_untracked and '??' in paths:
+        del paths['??']
+    
+    if no_metadata:
+        metadata = None
+    else:
+        metadata = {
+            'username': getpass.getuser(),
+            'hostname': socket.gethostname()
+        }
+
+    if not yes:
+        status = repo.get_snapshot_paths_status(paths, cli=True)
+        print('\n'.join(status))
+
+        r = input('Create snapshot with the contents above [Y/n]: ')
+        if r.lower() not in ('', 'yes', 'y'):
+            logger.error('Snapshot aborted.')
+            sys.exit(PIT_CODE_SNAPSHOT_ABORTED)
+
+    # Flatten paths
+    def flatten_pathspec(a: List[str], b: List[Union[str, Tuple[str]]]):
+        if isinstance(b[0], tuple):
+            for t in b:
+                a += t
+        else:
+            a += b
+        return a
+    flattened = reduce(
+        flatten_pathspec,
+        paths.values(),
+        []
+    )
+
+    logger.debug('Creating snapshots with following paths:')
+    for p in flattened:
+        logger.debug("\t'%s'" % p)
+
+    try:
+        s = repo.snapshot(
+            paths=flattened,
+            metadata=metadata
+        )
+    except PITStashFailedError as err:
+        logger.error('Git stash failed: \n%s', err.msg)
+        sys.exit(PIT_CODE_STASH_PUSH_FAILED)
+    except PITStashPopFailedError as err:
+        logger.error('Git stash pop failed: \n%s', err.msg)
+        sys.exit(PIT_CODE_STASH_POP_FAILED)
+    except PITCommitParseFailed as err:
+        logger.error('Failed to parse commit hash: %s', err.msg)
+        sys.exit(PIT_CODE_COMMIT_PARSE_FAILED)
+
+    logger.info(f"Created new snapshot: {s.pit_id}")

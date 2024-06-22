@@ -13,12 +13,14 @@ authors=[
 # Restrictions causing minimum version
 # Python 3.7:
 # - subprocess.run's capture_output
+# - Ordered dictionaries for log loading / parsing
 requires-python = ">= 3.7"
 dependencies = [
     "click",
     "pydantic",
     "pathspec",
-    "colorama"
+    "colorama",
+    "unique-names-generator"
 ]
 
 [project.optional-dependencies]

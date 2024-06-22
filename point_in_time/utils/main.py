@@ -8,7 +8,7 @@ from pathspec.patterns import GitWildMatchPattern
 
 from point_in_time.constants.main import PIT_DIR_NAME
 
-from .os import ChDir
+from .fs import ChDir
 from .git import git_show_toplevel, git_check_ignore
 
 GIT_STATUS_CODES_W_TUPLE = (

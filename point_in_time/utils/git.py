@@ -1,4 +1,8 @@
+import re
 import subprocess
+from typing import List
+from datetime import datetime
+from dataclasses import dataclass
 
 def git_is_command() -> bool:
     """
@@ -63,3 +67,41 @@ def git_check_ignore(path: str) -> bool:
     assert result.returncode != 128, "Specified path is outside of git repository"
 
     return result.returncode == 0
+
+@dataclass
+class GitCommitDetails:
+    hash: str
+    date: datetime
+    files_changed: List[str]
+
+def git_commit_details(hash: str) -> GitCommitDetails:
+    """
+    Utility for parsing relevant details about git commits.
+
+    Args:
+        hash (str): The git hash to collect details on
+
+    Returns:
+        GitCommitDetails: The parsed details
+    """
+    result = subprocess.run(
+        [
+            'git', 'show', hash,
+            '--name-only',
+            '--format=format:%cI'
+        ],
+        capture_output=True,
+        check=True
+    )
+
+    result = result.stdout.decode().split('\n')
+
+    # Parse datetime out
+    date = datetime.fromisoformat(result[0])
+    files = list(filter(lambda s: len(s) != 0, result[1:]))
+
+    return GitCommitDetails(
+        hash=hash,
+        date=date,
+        files_changed=files
+    )
