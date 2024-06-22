@@ -7,6 +7,8 @@ from functools import reduce
 
 import pytest
 
+from point_in_time.repo import PITRepo
+
 @pytest.fixture
 def with_empty_dir(tmp_path_factory):
     # Note: Using tmp_path_factory over tmp_path to not collide with tmp_path if used by consuming tests / fixtures
@@ -28,34 +30,46 @@ class GitSpec:
     A dataclass accepted by associated fixtures which informs the fixtures how to initialize the git repo and contains helper properties for tests utilizing those fixtures.
     """
 
-    spec_dict: Dict[str, Set[str]]
+    spec_dict: Dict[str, List[str]]
     """
     The spec which the fixture was invoked with.
     """
 
-    @staticmethod
-    def as_git_status_would(
-        paths: Set[str]
-    ) -> Set[str]:
+    @property
+    def git_status_spec(self) -> Dict[str, List[str]]:
         """
         **IMPORTANT NOTE:** This method is very much a *WIP*, only built atm to work with specs known to be defined by tests in this repo.
 
-        Utility to take a set of file paths and return a set of paths as would be returned by `git status`. Specifically, return the top level file name (dir or file) where directories with multiple files are only shown by the directory name itself.
+        Utility to map specs used to define the files should be in the git fixture to those which would be returned by `git status`. Specifically, git status will return some directories, like untracked directories
 
         Args:
-            paths (Set[str]): The file paths to transform.
+            spec (Dict[str, Set[str]]): The spec to transform.
         Returns:
-            Set[str]: The paths that `git status` would return given input files.
+            Dict[str, Set[str]]: The spec that should be expected by `git status` returns
         """
+        if hasattr(self, '_git_status_spec'):
+            return self._git_status_spec
+
+        spec = self.spec_dict.copy()
+
         def top_level_only(path):
             s = os.path.split(path)
             if s[0] != '':
                 return s[0] + '/'
             return s[1]
-        return set(map(
-            top_level_only,
-            paths
-        ))
+
+        for code, paths in spec.items():
+            if code in ('!!', '??'):
+                spec[code] = set(map(
+                    top_level_only,
+                    paths
+                ))
+
+            # Sort all paths alphabetically 
+            spec[code] = sorted(spec[code])
+
+        self._git_status_spec = spec
+        return spec
 
     def spec_fattened(
         self,
@@ -96,7 +110,7 @@ class GitSpec:
     def expected_initial_status(
         self,
         include_ignores: bool = True
-    ) -> Dict[str, Set[str]]:
+    ) -> Dict[str, List[str]]:
         """
         The expected return of `git status --short` (as parsed by utilities).
 
@@ -106,7 +120,7 @@ class GitSpec:
         Returns:
             Dict[str, Set[str]]: The `spec` which should be expected at the start.
         """
-        expected = self.spec_dict.copy()
+        expected = self.git_status_spec.copy()
 
         # Committed code is non-standard, will never show up in the status.
         del expected[GIT_CODE_COMMITTED]
@@ -114,10 +128,6 @@ class GitSpec:
         # If ignores excluded, exclude
         if not include_ignores:
             del expected['!!']
-
-        # Transform all paths to be listed as returned by `git status`
-        for code, files in expected.items():
-            expected[code] = self.as_git_status_would(files)
 
         return expected
 
@@ -133,10 +143,10 @@ class GitData:
 @pytest.fixture
 def with_git_repo(with_empty_dir) -> Callable[[], GitData]:
     def inner(
-        spec: GitSpec = None,
+        git_spec: GitSpec = None,
     ) -> GitData:
-        if spec is None:
-            spec = GitSpec({})
+        if git_spec is None:
+            git_spec = GitSpec({})
 
         subprocess.run(
             ['git', 'init'],
@@ -154,7 +164,7 @@ def with_git_repo(with_empty_dir) -> Callable[[], GitData]:
         )
 
         # Create all files specified
-        for _, files in spec.spec_dict.items():
+        for _, files in git_spec.spec_dict.items():
             for file in files:
                 parent = os.path.dirname(file)
                 if parent != '':
@@ -166,9 +176,9 @@ def with_git_repo(with_empty_dir) -> Callable[[], GitData]:
 
         # Files which should be committed, commit
         # Note: `99` is not valid git status code, just making up one here for use with the fixture
-        if '99' in spec.spec_dict:
+        if '99' in git_spec.spec_dict:
             subprocess.run(
-                ['git', 'add'] + list(spec.spec_dict['99']),
+                ['git', 'add'] + list(git_spec.spec_dict['99']),
                 check=True
             )
             subprocess.run(
@@ -177,19 +187,19 @@ def with_git_repo(with_empty_dir) -> Callable[[], GitData]:
             )
 
         # Files which should be staged, stage
-        if 'A ' in spec.spec_dict:
+        if 'A ' in git_spec.spec_dict:
             subprocess.run(
-                ['git', 'add'] + list(spec.spec_dict['A ']),
+                ['git', 'add'] + list(git_spec.spec_dict['A ']),
                 check=True
             )
 
-        if '!!' in spec.spec_dict:
+        if '!!' in git_spec.spec_dict:
             with open('.gitignore', 'w') as f:
-                for file in spec.spec_dict['!!']:
+                for file in git_spec.spec_dict['!!']:
                     f.write(f'{file}\n')
 
         return GitData(
-            spec=spec,
+            spec=git_spec,
             path=str(with_empty_dir),
             ignore_path=os.path.join(str(with_empty_dir), '.gitignore'),
         )
@@ -199,15 +209,17 @@ def with_git_repo(with_empty_dir) -> Callable[[], GitData]:
 @dataclass
 class PitData:
     path: str
+    pit_repo: PITRepo
     git_data: GitData
 
 @pytest.fixture
 def with_pit_repo(with_git_repo) -> Callable[[], PitData]:
     def inner(
         no_ignore: bool = False,
-        *args # Git args
+        include_lines: Optional[List[str]] = None,
+        **kwargs # Git args
     ) -> PitData:
-        d = with_git_repo(*args)
+        d = with_git_repo(**kwargs)
 
         args = ['pit', 'init']
         if no_ignore:
@@ -217,8 +229,15 @@ def with_pit_repo(with_git_repo) -> Callable[[], PitData]:
             check=True
         )
 
+
+        pit_repo = PITRepo(os.path.join(d.path, '.pit'))
+        if include_lines is not None:
+            with open(pit_repo._include_path, 'w') as f:
+                f.write('\n'.join(include_lines))
+
         return PitData(
             path=d.path,
+            pit_repo=pit_repo,
             git_data=d
         )
 

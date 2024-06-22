@@ -81,12 +81,10 @@ def status():
     result_checks = cli_check_standard()
     if result_checks != 0:
         sys.exit(result_checks)
-    
+
     repo = cli_load_pit_repo()
-    paths = status_filter_pathspec(repo._include_path)
-
-    print(paths)
-
+    status = repo.get_snapshot_paths_status(cli=True)
+    print('\n'.join(status))
 
 @pit.command(['snapshot', 'snap'])
 @click.option('--no-untracked', is_flag=True, help="Disables inclusion of '.pit' directory in git ignore")

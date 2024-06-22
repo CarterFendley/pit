@@ -19,3 +19,7 @@ class PITRepoLoadError(PITBaseException):
 class PITLogLoadError(PITRepoLoadError):
     """When loading log file fails"""
     pass
+
+class PITIncludeLoadError(PITBaseException):
+    """When loading include file fails"""
+    pass

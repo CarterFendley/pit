@@ -17,7 +17,8 @@ requires-python = ">= 3.7"
 dependencies = [
     "click",
     "pydantic",
-    "pathspec"
+    "pathspec",
+    "colorama"
 ]
 
 [project.optional-dependencies]

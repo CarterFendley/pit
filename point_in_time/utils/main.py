@@ -19,6 +19,35 @@ GIT_STATUS_CODES_W_TUPLE = (
 Git short form status 'codes' which indicate that there will be two paths separated by '->'. This can be used with `status_filter_pathspec` to know which keys will have a list of tuple with two items (`Set[Tuple[str]]`) instead of a simple list of of strings (`Set[str]`).
 """
 
+GIT_STATUS_CODES_UNMERGED = (
+    "DD",
+    "AU",
+    "UD",
+    "UA",
+    "DU",
+    "AA",
+    "UU"
+)
+"""
+Git short form status 'codes' which indicated unmerged files. Although the `U` character is a good indicator of this, the presence of `DD` status and similar which also indicate unmerged trees is harder, so this list is maintained
+"""
+
+GIT_STATUS_STRING_MAPPINGS = {
+    'A': 'new file',
+    'C': 'copied',
+    'D': 'deleted',
+    'M': 'modified',
+    'R': 'renamed',
+    'T': 'typechange',
+    '!': 'ignored',
+    '?': 'untracked'
+}
+"""
+Mappings from git single char status codes to status strings.
+
+**NOTE:** These are non-standard due inclusion of `!` and `?`
+"""
+
 def get_pit_path(git_path: Optional[str] = None) -> str:
     """
     General purpose util for locating the `.pit` directory (which is in the toplevel git folder)
@@ -66,10 +95,10 @@ def find_unescaped_qoute(string: str, start: int) -> int:
     return -1
 
 def status_filter_pathspec(
-    path: str,
-) -> Dict[str, Set[Union[str, Tuple[str]]]]:
+    pathspec: List[str],
+) -> Dict[str, List[Union[str, Tuple[str]]]]:
     """
-    This utility parses the output of `git status --short` and filters based on an specified file containing a git [pathspec](https://git-scm.com/docs/gitglossary#Documentation/gitglossary.txt-aiddefpathspecapathspec). See an example return below.
+    This utility parses the output of `git status --short` and filters based on a git [pathspec](https://git-scm.com/docs/gitglossary#Documentation/gitglossary.txt-aiddefpathspecapathspec). See an example return below.
 
     ```python
     >>> status_filter_pathspec(...)
@@ -85,7 +114,7 @@ def status_filter_pathspec(
     **NOTE:** Pathspecs are parsed by [cpburnz/python-pathspec](https://github.com/cpburnz/python-pathspec).
 
     Args:
-        path (str): The path to a valid pathspec file.
+        pathspec (List[str]): The pathspec to filter by.
 
     Returns:
         Dict[str]: The git status filtered by the pathspec file (including ignored files).
@@ -139,9 +168,7 @@ def status_filter_pathspec(
             files_by_code[code].append(path_one)
 
     # Filter based on specified pathspec
-    with open(path, 'r') as f:
-        spec = PathSpec.from_lines(GitWildMatchPattern, f)
-
+    spec = PathSpec.from_lines(GitWildMatchPattern, pathspec)
     for code in files_by_code.keys():
         if code in GIT_STATUS_CODES_W_TUPLE:
             # Note: There is a design decision here to include both paths if one side is matched.
@@ -156,11 +183,66 @@ def status_filter_pathspec(
                 spec.match_files(files_by_code[code])
             )
 
-        # Normalize by removing codes which have an empty set
-        files_by_code = {
-            k:v
-            for k, v in files_by_code.items()
-            if v != set()
-        }
+    # Normalize by removing codes no items and sorting
+    files_by_code = {
+        k:sorted(v)
+        for k, v in files_by_code.items()
+        if v != set()
+    }
 
     return files_by_code
+
+def code_to_status_string(code: str) -> str:
+    """
+    This method will transform the short form status codes into status strings. When the status of the index differs from the worktree, both will be returned
+
+    This method transforms the short form status codes into status strings. It will prefer the status of the worktree over the index because the worktree is what will be included in snapshots.
+
+    Examples:
+    ```python
+    >>> code_to_status_string('A ')
+    'added:'
+    >>> code_to_status_string(' M')
+    'modified:'
+    >>> code_to_status_string('AM')
+    'added & modified:'
+    >>> # Unmerged will simply return unmerged
+    >>> code_to_status_string('AU')
+    'unmerged:'
+    ```
+
+    References:
+        - [wt_status_diff_status_string(...)](https://github.com/git/git/blob/9005149a4a77e2d3409c6127bf4fd1a0893c3495/wt-status.c#L300)
+
+    Args:
+        code (str): A git short form status code.
+
+    Returns:
+        str: The status string.
+    """
+    assert len(code) == 2, "Invalid git status code"
+
+    if code in GIT_STATUS_CODES_UNMERGED:
+        return "unmerged:"
+
+    index_status = code[0]
+    worktree_status = code[1]
+
+    worktree_string = GIT_STATUS_STRING_MAPPINGS.get(
+        worktree_status,
+        None
+    )
+    index_string = GIT_STATUS_STRING_MAPPINGS.get(
+        index_status,
+        None
+    )
+
+    if index_status != worktree_status and (index_string is not None and worktree_string is not None):
+        # If we have different statuses for index / worktree, combine
+        return f'{index_string} & {worktree_string}:'
+    elif worktree_string is not None:
+        return f'{worktree_string}:'
+    elif index_string is not None:
+        return f'{index_string}:'
+
+    raise RuntimeError("Unable to map either index or worktree status to string: '%s'" % code)
