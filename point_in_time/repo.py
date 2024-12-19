@@ -35,6 +35,7 @@ from point_in_time.utils.main import (
     status_filter_pathspec,
     code_to_status_string
 )
+from point_in_time.utils.logging import get_logger
 from point_in_time.utils.fs import WithBackUp
 from point_in_time.utils.git import (
     GitCommitDetails,
@@ -43,6 +44,8 @@ from point_in_time.utils.git import (
 
 __all__ = ['PITRepo']
 just_fix_windows_console()
+
+logger = get_logger(__name__)
 
 RE_STASH_POP_COMMIT_HASH = r"\([0-9a-z]+\)$"
 

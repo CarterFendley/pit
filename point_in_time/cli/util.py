@@ -9,14 +9,14 @@ from point_in_time.utils.git import (
     git_is_command,
     git_is_inside_working_tree,
 )
-from point_in_time.utils.logging import pit_get_logger
+from point_in_time.utils.logging import get_logger
 
 from point_in_time.errors import PITRepoLoadError
 from point_in_time.repo import PITRepo
 from point_in_time.constants.strings import WARN_PIT_NOT_IGNORED
 from point_in_time.constants.return_codes import *
 
-logger = pit_get_logger(__name__, cli=True)
+logger = get_logger(__name__, cli=True)
 
 def cli_load_pit_repo() -> PITRepo:
     """

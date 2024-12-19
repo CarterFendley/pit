@@ -25,22 +25,25 @@ from point_in_time.utils.main import (
 from point_in_time.utils.git import (
     git_show_toplevel
 )
-from point_in_time.utils.logging import pit_get_logger, set_cli_level
+from point_in_time.utils.logging import (
+    get_logger,
+    set_cli_level,
+)
 from point_in_time.cli.util import *
 
 from .extension import MultiCommandGroup
 
 
-logger = pit_get_logger(__name__, cli=True)
+logger = get_logger(__name__, cli=True)
 
 @click.group(cls=MultiCommandGroup)
-@click.option('-v', '--verbose', is_flag=True, help='Enable verbose logging.')
-def pit(verbose: bool):
+@click.option('-v', '--verbose', count=True, help='Enable verbose logging.')
+def pit(verbose: int):
     """
     Lightweight tooling for tracking experiment state in git based repositories.
     """
-    if verbose:
-        set_cli_level(logging.DEBUG)
+    print("Log level: ", verbose)
+    set_cli_level(verbose)
 
 @pit.command('init')
 @click.argument('directory', required=False, default=None)

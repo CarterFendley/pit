@@ -4,8 +4,11 @@ from typing import List
 FORMAT_STR_VERBOSE_INFO = '{ %(name)s:%(lineno)d @ %(asctime)s } -'
 
 CLI_LOGGERS: List[logging.Logger] = []
+CODE_LOGGERS: List[logging.Logger] = []
 
-def pit_get_logger(name: str, cli: bool = False) -> logging.Logger:
+tool_name = 'pit'
+
+def get_logger(name: str, cli: bool = False) -> logging.Logger:
     """
     Returns a logger with some helpful presets.
 
@@ -22,7 +25,7 @@ def pit_get_logger(name: str, cli: bool = False) -> logging.Logger:
         formatter = CLIFormatter()
     else:
         formatter = logging.Formatter(
-            f'[pit] %(levelname)s - {FORMAT_STR_VERBOSE_INFO} %(message)s'
+            f'[{tool_name}] %(levelname)s - {FORMAT_STR_VERBOSE_INFO} %(message)s'
         )
     handler.setFormatter(formatter)
     logger.addHandler(handler)
@@ -32,6 +35,8 @@ def pit_get_logger(name: str, cli: bool = False) -> logging.Logger:
     if cli:
         logger.setLevel(logging.INFO)
         CLI_LOGGERS.append(logger)
+    else:
+        CODE_LOGGERS.append(logger)
 
     return logger
 
@@ -42,15 +47,29 @@ def set_cli_level(level: int):
     Args:
         level (int): The logging level to set
     """
+    cli_level = logging.INFO
+    code_level = logging.WARNING
+
+    if level == 1:
+        cli_level = logging.DEBUG
+    elif level == 2:
+        cli_level = logging.DEBUG
+        code_level = logging.INFO
+    elif level == 3:
+        cli_level = logging.DEBUG
+        code_level = logging.DEBUG
+
     for logger in CLI_LOGGERS:
-        logger.setLevel(level)
+        logger.setLevel(cli_level)
+    for logger in CODE_LOGGERS:
+        logger.setLevel(code_level)
 
 class CLIFormatter(logging.Formatter):
     """
     Logging formatter to change format based on level
     """
-    info_format = '[pit] %(message)s'
-    default_format = '[pit] %(levelname)s - %(message)s'
+    info_format = f'[{tool_name}] %(message)s'
+    default_format = f'[{tool_name}] %(levelname)s - %(message)s'
 
     def __init__(self):
         super().__init__(self.default_format)
