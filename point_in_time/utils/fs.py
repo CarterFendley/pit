@@ -9,7 +9,7 @@ class ChDir:
 
     def __enter__(self):
         assert self._original_path is None, "ChDir contexts should not be nested, create a new ChDir object if needed."
-        self._original_path = os.curdir
+        self._original_path = os.path.abspath(os.curdir)
 
         os.chdir(self.path)
 
